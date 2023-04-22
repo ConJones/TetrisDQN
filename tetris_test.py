@@ -5,6 +5,7 @@ import imageio
 import pygame
 import numpy as np
 from DQN import DQN
+from math import floor
 
 def preprocess_img(img, board):
 
@@ -18,27 +19,38 @@ def preprocess_img(img, board):
     img = img != 0
     board = board != 239
 
+    # find board height
+    # look for any piece in any row
+    board_1D = board.any(axis=1)
+    # take to sum to determine the height of the board
+    height =  board_1D.sum()
+
     img = img.astype('int8')
 
     # Set frozen blocks to 2
     img[board] = 2
+
+    img = np.concatenate((img[0:2,:], np.zeros((1, 10), dtype=np.int8), img[20-height:(20-height+4 if 20-height+4 <= 20 else 20),:]), axis=0)
+
+    if img.shape[0] < 7:
+        img = np.concatenate((img, 2*np.ones((7-img.shape[0], 10), dtype=np.int8)))
 
     return img
 
 # Create enviorment
 env = gym_tetris.make('TetrisA-v3')
 env = JoypadSpace(env, SIMPLE_MOVEMENT)
-state_size = (20, 10, 1)
-action_size = env.action_space.n
+state_size = (7, 10, 1)
+action_size = 40
 create_render = False
 create_video = False
-load_agent = "agent_6000+1000+1500"
+evaluate = 20
+load_agent = "agent_7x10_nr_new_new_net"
 
 # DQN Parameters
-num_episodes = 10000
+num_episodes = 100000
 num_timesteps = 20000
-batch_size = 512
-num_screens = 4  # may not be used
+batch_size = 64
 dqn = DQN(state_size, action_size, load_agent)
 
 # Create outputs
@@ -55,11 +67,11 @@ for e in range(num_episodes):
     time_step = 0
     
     # Save checkpoints
-    if e % 500 == 0 and e != 0:
+    if e % 1000 == 0 and e != 0:
         dqn.main_network.save(load_agent + '+' + str(e))
 
     # Evaluate every 10 episodes
-    if e % 10 == 0:
+    if e % evaluate == 0:
         temp_eps = dqn.epsilon
         dqn.epsilon = 0
     else:
@@ -69,8 +81,9 @@ for e in range(num_episodes):
         # Reset if finished
         if done:
             env.reset()
-            state = np.zeros(state_size, dtype=bool)
-            state = np.expand_dims(state,axis=0)
+            img, reward, done, info = env.step(0)
+            state = preprocess_img(img, info["board"])
+            state = np.expand_dims(state.reshape(7, 10, 1),axis=0)
 
         # Increment timestep 
         target_update_step += 1
@@ -84,20 +97,52 @@ for e in range(num_episodes):
         # Select action
         action = dqn.epsilon_greedy(state)
 
-        # Preform action and process board
-        img, reward, done, info = env.step(action)
+        # convert from action number to rotate and x movement
+        rotation = action % 4
+        x_pos = floor(action / 4)
 
-        # Progress
-        if not done:
-            for i in range(20):
-                img, reward_temp, done, info = env.step(0)
-                #if the episode is done then print the return
-                reward += reward_temp
-                if done:
-                    break
+        try:
+            reward = 0
+            # Preform action and process board
+            if(rotation == 1):
+                # Rotate 90
+                img, _, done, info = env.step(1)
+                img, _, done, info = env.step(0)
+            elif(rotation == 2):
+                # Rotate 180
+                img, _, done, info = env.step(1)
+                img, _, done, info = env.step(0)
+                img, _, done, info = env.step(1)
+                img, _, done, info = env.step(0)
+            elif(rotation == 3):
+                # Rotate -90
+                img, _, done, info = env.step(2)
+                img, _, done, info = env.step(0)
+
+            if x_pos - 5 < 0:
+                for i in range(5 - x_pos):
+                    # Move Left
+                    img, _, done, info = env.step(4)
+                    img, _, done, info = env.step(0)
+            else:
+                for i in range(x_pos - 5):
+                    # Move Right
+                    img, _, done, info = env.step(3)
+                    img, _, done, info = env.step(0)
+
+            pre_drop_stats = info["statistics"].copy()
+            while(info["statistics"] == pre_drop_stats):
+                # Drop until frozen
+                img, reward_temp, done, info = env.step(5)
+                if reward_temp != 0:
+                    reward = reward_temp
+            img, _, done, info = env.step(0)
+
+        except ValueError:  
+            done = True
 
         next_state = preprocess_img(img, info["board"])
-        next_state = np.expand_dims(next_state.reshape(20, 10, 1),axis=0)
+        next_state = np.expand_dims(next_state.reshape(7, 10, 1),axis=0)
 
         # Store transition
         dqn.store_transistion(state, action, reward, next_state, done)
@@ -115,7 +160,7 @@ for e in range(num_episodes):
             if create_video:
                 video.append_data(img)
 
-            if create_render or e % 10 == 0:
+            if create_render or e % evaluate == 0:
                 pygame.pixelcopy.array_to_surface(surface, img)
                 pygame.display.flip()
         

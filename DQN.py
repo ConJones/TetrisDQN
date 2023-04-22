@@ -2,6 +2,7 @@ import random
 import numpy as np
 from collections import deque
 import tensorflow as tf
+from os.path import exists
 
 class DQN:
     def __init__(self, state_size, action_size, load_agent_name=None):
@@ -19,10 +20,10 @@ class DQN:
         self.gamma = 0.99  
         
         #define the epsilon value
-        self.epsilon = 0.5   
+        self.epsilon = 0.3   
         
         #define the update rate at which we want to update the target network
-        self.update_rate = 1000
+        self.update_rate = 64*5
 
         self.load_agent = False if load_agent_name == None else True
         self.load_agent_name = load_agent_name
@@ -38,11 +39,15 @@ class DQN:
         
 
     def build_network(self):
-        if self.load_agent:
+        if self.load_agent and exists(self.load_agent_name):
             model = tf.keras.models.load_model(self.load_agent_name)
         else:
+            # Notify if proceeding with new agent and load agent true
+            if self.load_agent and not exists(self.load_agent_name):
+                print("File not found: Proceeding with new agent")
+                
             model = tf.keras.Sequential()
-            model.add(tf.keras.layers.Conv2D(16, 3, strides=2, padding='same', input_shape=self.state_size))
+            model.add(tf.keras.layers.Conv2D(16, 3, strides=1, padding='same', input_shape=self.state_size))
             model.add(tf.keras.layers.Activation('relu'))
 
             model.add(tf.keras.layers.Conv2D(32, 3, strides=1, padding='same'))
@@ -108,7 +113,7 @@ class DQN:
             Y.append(Q_values[0])
             
         #train the main network
-        self.main_network.fit(np.array(X), np.array(Y), batch_size=batch_size, verbose=2)
+        self.main_network.fit(np.array(X), np.array(Y), batch_size=batch_size, epochs=3, verbose=2)
 
     #update the target network weights by copying from the main network
     def update_target_network(self):
