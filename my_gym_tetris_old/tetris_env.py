@@ -71,7 +71,6 @@ class TetrisEnv(NESEnv):
         self._penalize_height = penalize_height
         self._current_height = 0
         self._penalize_holes = True
-        self._penalize_bumpiness = True
         self._current_holes = 0
         self.deterministic = True  # Always use a deterministic starting point.
         # reset the emulator, skip the start screen, and backup the state
@@ -187,53 +186,26 @@ class TetrisEnv(NESEnv):
         """Return the height of the board."""
         board = self._board
         num_holes = 0
-        num_added_lines = self._board_height - self._current_height
+        
+        # Crop board to only include non-empty rows
+        # board = board[(board.shape[0]-self._board_height):,:]
 
-        # Crop board to only include top 4 non-empty rows
-        board = board[(board.shape[0]-self._board_height):(board.shape[0]-self._board_height)+4+num_added_lines if (board.shape[0]-self._board_height)+4+num_added_lines < 20 else 20,:]
+        # # Iterate over columns 
+        # for col_num in board.shape[1]:
+        #     col = board[:,col_num]
 
-        # Iterate over columns 
-        for col in board.T:
+        #     # Find top filled block of the column
+        #     i = 0
+        #     while col[i] == 239 and i < len(col):
+        #         i += 1
 
-            # Find top filled block of the column
-            i = 0
-            while i < len(col) and col[i] == 239:
-                i += 1
-
-            # From below top block look for empty blocks below it
-            i += 1
-            if i < len(col):
-                for block in col[i:]:
-                    if block == 239:
-                        num_holes += 1
+        #     # From top block look for empty blocks below it
+        #     for block in col[i:]:
+        #         if block == 239:
+        #             num_holes += 1
 
         # take to sum to determine the height of the board
         return num_holes
-    
-    @property
-    def _bumpiness(self):
-        """Return the height of the board."""
-        board = self._board
-        total_bumpiness = 0
-        min_ys = []
-        num_added_lines = self._board_height - self._current_height
-
-        # Crop board to only include top 4 non-empty rows
-        board = board[(board.shape[0]-self._board_height):(board.shape[0]-self._board_height)+4+num_added_lines if (board.shape[0]-self._board_height)+4+num_added_lines < 20 else 20,:]
-
-        # Iterate over columns 
-        for col in board.T:
-
-            # Find top filled block of the column
-            i = 0
-            while i < col.shape[0] and col[i] == 239:
-                i += 1
-            min_ys.append(i)
-
-        for i in range(len(min_ys) - 1):
-            total_bumpiness += abs(min_ys[i] - min_ys[i+1])
-
-        return total_bumpiness
 
     # MARK: RAM Hacks
 
@@ -269,7 +241,6 @@ class TetrisEnv(NESEnv):
         self._current_lines = 0
         self._current_height = 0
         self._current_holes = 0
-        self._current_bumpiness = 0
 
     def _get_reward(self):
         """Return the reward after a step occurs."""
@@ -279,35 +250,27 @@ class TetrisEnv(NESEnv):
             reward += self._score - self._current_score
         # reward a line being cleared
         if self._reward_lines:
-            reward += 3*(self._number_of_lines - self._current_lines)*(self._number_of_lines - self._current_lines)
+            reward += 3*(self._number_of_lines - self._current_lines)
         # penalize a change in height
         if self._penalize_height:
-            penalty1 = self._board_height - self._current_height
+            penalty = self._board_height - self._current_height
             # only apply the penalty for an increase in height (not a decrease)
             # and if no lines were cleared
-            if penalty1 > 0 and reward <= 0:
-                reward -= penalty1
+            if penalty > 0 and reward <= 0:
+                reward -= penalty
         num_holes = 0
         if self._penalize_holes:
             num_holes = self._num_holes
-            penalty2 = 0.5*(num_holes - self._current_holes)
+            penalty = num_holes - self._current_holes
             # only apply the penalty for an increase in holes (not a decrease)
             # and if no lines were cleared
-            if penalty2 > 0 and reward <= 0:
-                reward -= penalty2
-        if self._penalize_bumpiness:
-            num_bumpiness = self._bumpiness
-            penalty3 = 0.25*(num_bumpiness - self._current_bumpiness)
-            # only apply the penalty for an increase in bumpiness (not a decrease)
-            # and if no lines were cleared
-            if penalty3 > 0 and reward <= 0:
-                reward -= penalty3
+            if penalty > 0 and reward <= 0:
+                reward -= penalty
         # update the locals
         self._current_score = self._score
         self._current_lines = self._number_of_lines
         self._current_height = self._board_height
         self._current_holes = num_holes
-        self._current_bumpiness = num_bumpiness
 
         return reward
 

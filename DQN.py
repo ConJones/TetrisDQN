@@ -14,16 +14,18 @@ class DQN:
         self.action_size = action_size
         
         #define the replay buffer
-        self.replay_buffer = deque(maxlen=1000)
+        self.replay_buffer = deque(maxlen=1024)
         
         #define the discount factor
-        self.gamma = 0.99  
+        self.gamma = 0.8  
         
         #define the epsilon value
-        self.epsilon = 0.3   
+        self.epsilon = 0.1   
         
         #define the update rate at which we want to update the target network
-        self.update_rate = 64*5
+        self.update_rate = 5000
+
+        self.learning_rate = .001
 
         self.load_agent = False if load_agent_name == None else True
         self.load_agent_name = load_agent_name
@@ -47,28 +49,23 @@ class DQN:
                 print("File not found: Proceeding with new agent")
                 
             model = tf.keras.Sequential()
-            model.add(tf.keras.layers.Conv2D(16, 3, strides=1, padding='same', input_shape=self.state_size))
-            model.add(tf.keras.layers.Activation('relu'))
-
-            model.add(tf.keras.layers.Conv2D(32, 3, strides=1, padding='same'))
-            model.add(tf.keras.layers.Activation('relu'))
-
-            # model.add(tf.keras.layers.Conv2D(32, (8, 8), strides=4, padding='same', input_shape=self.state_size))
-            # model.add(tf.keras.layers.Activation('relu'))
-            
-            # model.add(tf.keras.layers.Conv2D(64, (4, 4), strides=2, padding='same'))
-            # model.add(tf.keras.layers.Activation('relu'))
-            
-            # model.add(tf.keras.layers.Conv2D(64, (3, 3), strides=1, padding='same'))
-            # model.add(tf.keras.layers.Activation('relu'))
-            model.add(tf.keras.layers.Flatten())
-
-
-            model.add(tf.keras.layers.Dense(256, activation='relu'))
-            model.add(tf.keras.layers.Dense(self.action_size, activation='linear'))
+            model.add(tf.keras.layers.Dense(32, input_dim=self.state_size, 
+                activation=tf.keras.activations.relu,
+                kernel_initializer=tf.keras.initializers.VarianceScaling(
+                scale=2.0, mode='fan_in', distribution='truncated_normal')))
+            model.add(tf.keras.layers.Dense(64,
+                activation=tf.keras.activations.relu,
+                kernel_initializer=tf.keras.initializers.VarianceScaling(
+                scale=2.0, mode='fan_in', distribution='truncated_normal')))
+            model.add(tf.keras.layers.Dense(
+                self.action_size,
+                activation=None,
+                kernel_initializer=tf.keras.initializers.RandomUniform(
+                    minval=-0.03, maxval=0.03),
+                bias_initializer=tf.keras.initializers.Constant(-0.2)))
             
 
-        model.compile(loss='mse', optimizer=tf.keras.optimizers.Adam())
+        model.compile(loss='mean_squared_error', optimizer=tf.keras.optimizers.Adam(learning_rate=self.learning_rate))
         model.summary()
 
         return model
@@ -81,9 +78,9 @@ class DQN:
         if random.uniform(0,1) < self.epsilon:
             return np.random.randint(self.action_size)
         
-        Q_values = self.main_network(state)
+        Q_values = self.main_network(state).numpy()
         
-        return np.argmax(Q_values.numpy()[0])
+        return np.argmax(Q_values)
 
     
     #train the network
@@ -94,13 +91,12 @@ class DQN:
         
         #sample a mini batch of transition from the replay buffer
         minibatch = random.sample(self.replay_buffer, batch_size)
-
-        self.replay_buffer.clear()
         
         #compute the Q value using the target network
         for state, action, reward, next_state, done in minibatch:
             if not done:
-                target_Q = (reward + self.gamma * np.amax(self.target_network(next_state)))
+                target_Qs = self.target_network(next_state).numpy()
+                target_Q = (reward + self.gamma * np.amax(target_Qs))
             else:
                 target_Q = reward
                 
@@ -113,7 +109,7 @@ class DQN:
             Y.append(Q_values[0])
             
         #train the main network
-        self.main_network.fit(np.array(X), np.array(Y), batch_size=batch_size, epochs=3, verbose=2)
+        self.main_network.fit(np.array(X), np.array(Y), batch_size=batch_size, verbose=2)
 
     #update the target network weights by copying from the main network
     def update_target_network(self):
