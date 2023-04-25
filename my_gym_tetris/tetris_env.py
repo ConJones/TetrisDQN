@@ -70,8 +70,8 @@ class TetrisEnv(NESEnv):
         self._current_lines = 0
         self._penalize_height = penalize_height
         self._current_height = 0
-        self._penalize_holes = True
-        self._penalize_bumpiness = True
+        self._penalize_holes = False
+        self._penalize_bumpiness = False
         self._current_holes = 0
         self.deterministic = True  # Always use a deterministic starting point.
         # reset the emulator, skip the start screen, and backup the state
@@ -279,7 +279,7 @@ class TetrisEnv(NESEnv):
             reward += self._score - self._current_score
         # reward a line being cleared
         if self._reward_lines:
-            reward += 3*(self._number_of_lines - self._current_lines)*(self._number_of_lines - self._current_lines)
+            reward += 5*(self._number_of_lines - self._current_lines)*(self._number_of_lines - self._current_lines)
         # penalize a change in height
         if self._penalize_height:
             penalty1 = self._board_height - self._current_height
@@ -295,6 +295,7 @@ class TetrisEnv(NESEnv):
             # and if no lines were cleared
             if penalty2 > 0 and reward <= 0:
                 reward -= penalty2
+        num_bumpiness = 0
         if self._penalize_bumpiness:
             num_bumpiness = self._bumpiness
             penalty3 = 0.25*(num_bumpiness - self._current_bumpiness)
