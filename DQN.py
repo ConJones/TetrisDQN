@@ -20,7 +20,7 @@ class DQN:
         self.gamma = 0.8  
         
         #define the epsilon value
-        self.epsilon = 0.1   
+        self.epsilon = 0   
         
         #define the update rate at which we want to update the target network
         self.update_rate = 5000

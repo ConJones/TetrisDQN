@@ -19,7 +19,7 @@ action_size = 1
 create_render = True
 create_video = False
 evaluate = 20
-load_agent = "agent_no_conv_big_delta_state"
+load_agent = "agent_no_conv+1000"
 max_total_reward = 0
 
 # DQN Parameters
